@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Bun](https://img.shields.io/badge/Bun-1.0+-black.svg)](https://bun.sh/)
 
-**Turn Claude Code into your personal assistant, accessible from anywhere via Telegram.**
+**Turn [Claude Code](https://claude.com/product/claude-code) into your personal assistant, accessible from anywhere via Telegram.**
 
 Send text, voice, photos, and documents. Claude streams responses in real-time, showing you exactly what tools it's using as it works.
 
@@ -11,7 +11,11 @@ Send text, voice, photos, and documents. Claude streams responses in real-time, 
 
 ## Claude Code as a Personal Assistant
 
-This bot shines as a personal assistant you can access from anywhere. Set up a folder with a CLAUDE.md that teaches Claude about you—your preferences, where your notes live, your workflows. Then point this bot at that folder.
+This bot shines as a personal assistant you can access from anywhere.
+
+In fact, while [Claude Code](https://claude.com/product/claude-code) is described as a powerful AI **coding agent**, it's actually a very powerful **general-purpose agent** too if given the right instructions, context, and tools.
+
+So if you set up a folder with a CLAUDE.md that teaches Claude about you (your preferences, where your notes live, your workflows, ...) and then point this bot at that folder, you can have your own 24/7 personal assistant.
 
 Add [MCPs](https://code.claude.com/docs/en/mcp), [commands](https://code.claude.com/docs/en/slash-commands), and [skills](https://code.claude.com/docs/en/skills) to make it more powerful. The fun part: when you need a new capability, just ask Claude to build it, then use it via Telegram.
 
