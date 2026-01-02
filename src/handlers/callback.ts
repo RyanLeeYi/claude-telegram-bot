@@ -7,9 +7,9 @@
 import type { Context } from "grammy";
 import { unlinkSync } from "fs";
 import { session } from "../session";
-import { ALLOWED_USERS, INTENT_BLOCK_THRESHOLD } from "../config";
-import { isAuthorized, classifyIntent } from "../security";
-import { auditLog, auditLogBlocked, startTypingIndicator } from "../utils";
+import { ALLOWED_USERS } from "../config";
+import { isAuthorized } from "../security";
+import { auditLog, startTypingIndicator } from "../utils";
 import { StreamingState, createStatusCallback } from "./streaming";
 
 /**
@@ -99,15 +99,6 @@ export async function handleCallback(ctx: Context): Promise<void> {
     await session.stop();
     // Small delay to ensure clean interruption
     await new Promise((resolve) => setTimeout(resolve, 100));
-  }
-
-  // Intent check
-  const intent = await classifyIntent(message);
-  if (!intent.safe && intent.confidence > INTENT_BLOCK_THRESHOLD) {
-    console.warn(`Blocked callback from ${username}: ${intent.reason}`);
-    await auditLogBlocked(userId, username, message, intent.reason, intent.confidence);
-    await ctx.reply("I can't help with that request.");
-    return;
   }
 
   // Start typing

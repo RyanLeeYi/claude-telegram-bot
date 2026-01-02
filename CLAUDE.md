@@ -18,7 +18,7 @@ This is a Telegram bot (~3,300 lines TypeScript) that lets you control Claude Co
 ### Message Flow
 
 ```
-Telegram message → Handler → Auth check → Rate limit → Intent classification → Claude session → Streaming response → Audit log
+Telegram message → Handler → Auth check → Rate limit → Claude session → Streaming response → Audit log
 ```
 
 ### Key Modules
@@ -26,7 +26,7 @@ Telegram message → Handler → Auth check → Rate limit → Intent classifica
 - **`src/index.ts`** - Entry point, registers handlers, starts polling
 - **`src/config.ts`** - Environment parsing, MCP loading, safety prompts
 - **`src/session.ts`** - `ClaudeSession` class wrapping Agent SDK V2 with streaming, session persistence (`/tmp/claude-telegram-session.json`), and defense-in-depth safety checks
-- **`src/security.ts`** - `RateLimiter` (token bucket), path validation, command safety checks, intent classification via claude CLI subprocess
+- **`src/security.ts`** - `RateLimiter` (token bucket), path validation, command safety checks
 - **`src/formatting.ts`** - Markdown→HTML conversion for Telegram, tool status emoji formatting
 - **`src/utils.ts`** - Audit logging, voice transcription (OpenAI), typing indicators
 - **`src/types.ts`** - Shared TypeScript types
@@ -46,11 +46,10 @@ Each message type has a dedicated async handler:
 
 1. User allowlist (`TELEGRAM_ALLOWED_USERS`)
 2. Rate limiting (token bucket, configurable)
-3. Intent classification (Haiku via claude CLI)
-4. Path validation (`ALLOWED_PATHS`)
-5. Command safety (blocked patterns)
-6. System prompt constraints
-7. Audit logging
+3. Path validation (`ALLOWED_PATHS`)
+4. Command safety (blocked patterns)
+5. System prompt constraints
+6. Audit logging
 
 ### Configuration
 

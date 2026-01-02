@@ -4,9 +4,9 @@
 
 import type { Context } from "grammy";
 import { session } from "../session";
-import { ALLOWED_USERS, INTENT_BLOCK_THRESHOLD } from "../config";
-import { isAuthorized, rateLimiter, classifyIntent } from "../security";
-import { auditLog, auditLogBlocked, auditLogRateLimit, checkInterrupt, startTypingIndicator } from "../utils";
+import { ALLOWED_USERS } from "../config";
+import { isAuthorized, rateLimiter } from "../security";
+import { auditLog, auditLogRateLimit, checkInterrupt, startTypingIndicator } from "../utils";
 import { StreamingState, createStatusCallback } from "./streaming";
 
 /**
@@ -42,28 +42,18 @@ export async function handleText(ctx: Context): Promise<void> {
     return;
   }
 
-  // 4. Mark processing started (allows /stop to work during intent classification)
+  // 4. Mark processing started
   const stopProcessing = session.startProcessing();
 
-  // 5. Intent classification (security filter)
-  const intent = await classifyIntent(message);
-  if (!intent.safe && intent.confidence > INTENT_BLOCK_THRESHOLD) {
-    stopProcessing();
-    console.warn(`Blocked message from ${username}: ${intent.reason}`);
-    await auditLogBlocked(userId, username, message, intent.reason, intent.confidence);
-    await ctx.reply("I can't help with that request.");
-    return;
-  }
-
-  // 6. Start typing indicator
+  // 5. Start typing indicator
   const typing = startTypingIndicator(ctx);
 
-  // 7. Create streaming state and callback
+  // 6. Create streaming state and callback
   const state = new StreamingState();
   const statusCallback = createStatusCallback(ctx, state);
 
   try {
-    // 8. Send to Claude with streaming
+    // 7. Send to Claude with streaming
     const response = await session.sendMessageStreaming(
       message,
       username,
@@ -73,7 +63,7 @@ export async function handleText(ctx: Context): Promise<void> {
       ctx
     );
 
-    // 9. Audit log
+    // 8. Audit log
     await auditLog(userId, username, "TEXT", message, response);
   } catch (error) {
     console.error("Error processing message:", error);

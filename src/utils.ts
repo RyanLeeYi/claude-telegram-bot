@@ -72,24 +72,6 @@ export async function auditLog(
   await writeAuditLog(event);
 }
 
-export async function auditLogBlocked(
-  userId: number,
-  username: string,
-  message: string,
-  reason: string,
-  confidence: number
-): Promise<void> {
-  await writeAuditLog({
-    timestamp: new Date().toISOString(),
-    event: "blocked",
-    user_id: userId,
-    username,
-    content: message,
-    reason,
-    confidence,
-  });
-}
-
 export async function auditLogAuth(
   userId: number,
   username: string,

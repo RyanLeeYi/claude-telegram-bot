@@ -86,7 +86,7 @@ class ClaudeSession {
   }
 
   /**
-   * Mark processing as started (before intent classification).
+   * Mark processing as started.
    * Returns a cleanup function to call when done.
    */
   startProcessing(): () => void {
@@ -109,7 +109,7 @@ class ClaudeSession {
       return "stopped";
     }
 
-    // If processing (e.g., intent classification) but query not started yet
+    // If processing but query not started yet
     if (this._isProcessing) {
       this.stopRequested = true;
       console.log("Stop requested - will cancel before query starts");

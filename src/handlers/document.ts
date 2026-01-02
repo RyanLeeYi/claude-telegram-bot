@@ -7,9 +7,9 @@
 import type { Context } from "grammy";
 import * as pdfParse from "pdf-parse";
 import { session } from "../session";
-import { ALLOWED_USERS, INTENT_BLOCK_THRESHOLD, TEMP_DIR } from "../config";
-import { isAuthorized, rateLimiter, classifyIntent } from "../security";
-import { auditLog, auditLogBlocked, auditLogRateLimit, startTypingIndicator } from "../utils";
+import { ALLOWED_USERS, TEMP_DIR } from "../config";
+import { isAuthorized, rateLimiter } from "../security";
+import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
 import { StreamingState, createStatusCallback } from "./streaming";
 import { createMediaGroupBuffer, handleProcessingError } from "./media-group";
 
@@ -234,17 +234,6 @@ async function processArchive(
       ? `Archive: ${fileName}\n\nFile tree (${tree.length} files):\n${treeStr}\n\nExtracted contents:\n${contentsStr}\n\n---\n\n${caption}`
       : `Please analyze this archive (${fileName}):\n\nFile tree (${tree.length} files):\n${treeStr}\n\nExtracted contents:\n${contentsStr}`;
 
-    // Intent classification on caption
-    if (caption) {
-      const intent = await classifyIntent(caption);
-      if (!intent.safe && intent.confidence > INTENT_BLOCK_THRESHOLD) {
-        console.warn(`Blocked archive from ${username}: ${intent.reason}`);
-        await auditLogBlocked(userId, username, caption, intent.reason, intent.confidence);
-        await ctx.reply("I can't help with that request.");
-        return;
-      }
-    }
-
     // Create streaming state
     const state = new StreamingState();
     const statusCallback = createStatusCallback(ctx, state);
@@ -312,18 +301,6 @@ async function processDocuments(
     prompt = caption
       ? `${documents.length} Documents:\n\n${docList}\n\n---\n\n${caption}`
       : `Please analyze these ${documents.length} documents:\n\n${docList}`;
-  }
-
-  // Intent classification on caption
-  if (caption) {
-    const intent = await classifyIntent(caption);
-    if (!intent.safe && intent.confidence > INTENT_BLOCK_THRESHOLD) {
-      stopProcessing();
-      console.warn(`Blocked document from ${username}: ${intent.reason}`);
-      await auditLogBlocked(userId, username, caption, intent.reason, intent.confidence);
-      await ctx.reply("I can't help with that request.");
-      return;
-    }
   }
 
   // Start typing

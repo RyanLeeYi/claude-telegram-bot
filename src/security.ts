@@ -1,20 +1,18 @@
 /**
  * Security module for Claude Telegram Bot.
  *
- * Rate limiting, path validation, command safety, intent classification.
+ * Rate limiting, path validation, command safety.
  */
 
 import { resolve, normalize } from "path";
 import { realpathSync } from "fs";
-import type { RateLimitBucket, IntentResult } from "./types";
+import type { RateLimitBucket } from "./types";
 import {
   ALLOWED_PATHS,
   BLOCKED_PATTERNS,
   RATE_LIMIT_ENABLED,
   RATE_LIMIT_REQUESTS,
   RATE_LIMIT_WINDOW,
-  CLAUDE_CLI_PATH,
-  INTENT_CLASSIFIER_PROMPT,
   TEMP_PATHS,
 } from "./config";
 
@@ -143,55 +141,6 @@ export function checkCommandSafety(command: string): [safe: boolean, reason: str
   }
 
   return [true, ""];
-}
-
-// ============== Intent Classification ==============
-
-export async function classifyIntent(message: string): Promise<IntentResult> {
-  try {
-    const prompt = INTENT_CLASSIFIER_PROMPT.replace("{message}", message);
-
-    const proc = Bun.spawn([CLAUDE_CLI_PATH, "--model", "haiku", "-p", prompt], {
-      stdout: "pipe",
-      stderr: "pipe",
-      env: {
-        ...process.env,
-        // Ensure node is in PATH for Claude CLI
-        PATH: process.env.PATH,
-      },
-    });
-
-    // Set timeout
-    const timeoutId = setTimeout(() => {
-      proc.kill();
-    }, 30000);
-
-    const exitCode = await proc.exited;
-    clearTimeout(timeoutId);
-
-    // Read output
-    let output = await new Response(proc.stdout).text();
-    if (!output.trim()) {
-      output = await new Response(proc.stderr).text();
-    }
-
-    const upperOutput = output.toUpperCase();
-    const isUnsafe = upperOutput.includes("UNSAFE");
-
-    return {
-      safe: !isUnsafe,
-      reason: isUnsafe ? "Intent classified as unsafe" : "Safe",
-      confidence: 0.9, // Placeholder confidence
-    };
-  } catch (error) {
-    console.error("Intent classification error:", error);
-    // Fail open - allow the message but log the error
-    return {
-      safe: true,
-      reason: "Classification failed - allowing",
-      confidence: 0,
-    };
-  }
 }
 
 // ============== Authorization ==============

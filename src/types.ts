@@ -18,13 +18,6 @@ export interface RateLimitBucket {
   lastUpdate: number;
 }
 
-// Intent classification result
-export interface IntentResult {
-  safe: boolean;
-  reason: string;
-  confidence: number;
-}
-
 // Session persistence data
 export interface SessionData {
   session_id: string;
@@ -60,7 +53,6 @@ export interface McpHttpConfig {
 // Audit log event types
 export type AuditEventType =
   | "message"
-  | "blocked"
   | "auth"
   | "tool_use"
   | "error"

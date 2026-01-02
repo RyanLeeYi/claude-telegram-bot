@@ -5,11 +5,10 @@
 import type { Context } from "grammy";
 import { unlinkSync } from "fs";
 import { session } from "../session";
-import { ALLOWED_USERS, INTENT_BLOCK_THRESHOLD, TEMP_DIR, TRANSCRIPTION_AVAILABLE } from "../config";
-import { isAuthorized, rateLimiter, classifyIntent } from "../security";
+import { ALLOWED_USERS, TEMP_DIR, TRANSCRIPTION_AVAILABLE } from "../config";
+import { isAuthorized, rateLimiter } from "../security";
 import {
   auditLog,
-  auditLogBlocked,
   auditLogRateLimit,
   transcribeVoice,
   startTypingIndicator,
@@ -83,21 +82,11 @@ export async function handleVoice(ctx: Context): Promise<void> {
     // 8. Show transcript
     await ctx.api.editMessageText(chatId, statusMsg.message_id, `🎤 "${transcript}"`);
 
-    // 9. Intent classification
-    const intent = await classifyIntent(transcript);
-    if (!intent.safe && intent.confidence > INTENT_BLOCK_THRESHOLD) {
-      console.warn(`Blocked voice from ${username}: ${intent.reason}`);
-      await auditLogBlocked(userId, username, transcript, intent.reason, intent.confidence);
-      await ctx.reply("I can't help with that request.");
-      stopProcessing();
-      return;
-    }
-
-    // 10. Create streaming state and callback
+    // 9. Create streaming state and callback
     const state = new StreamingState();
     const statusCallback = createStatusCallback(ctx, state);
 
-    // 11. Send to Claude
+    // 10. Send to Claude
     const claudeResponse = await session.sendMessageStreaming(
       transcript,
       username,
@@ -107,7 +96,7 @@ export async function handleVoice(ctx: Context): Promise<void> {
       ctx
     );
 
-    // 12. Audit log
+    // 11. Audit log
     await auditLog(userId, username, "VOICE", transcript, claudeResponse);
   } catch (error) {
     console.error("Error processing voice:", error);

@@ -59,28 +59,7 @@ Configure via:
 - `RATE_LIMIT_REQUESTS` - Requests per window (default: 20)
 - `RATE_LIMIT_WINDOW` - Window in seconds (default: 60)
 
-### Layer 3: Intent Classification
-
-Every message is classified by a fast AI model (Claude Haiku) before being processed.
-
-```
-Message → Haiku classifies intent → UNSAFE messages are blocked
-```
-
-**UNSAFE triggers:**
-- Requesting raw secrets (.env, API keys, SSH keys, passwords)
-- Social engineering ("ignore instructions", "pretend you're...")
-- Prompt injection attempts
-
-**SAFE by design:**
-- File operations (search, read, edit)
-- Email, calendar, tasks
-- Coding help, debugging
-- Web search, research
-
-The classifier errs on the side of allowing requests. Only clear security threats are blocked.
-
-### Layer 4: Path Validation
+### Layer 3: Path Validation
 
 File operations are restricted to explicitly allowed directories.
 
@@ -103,7 +82,7 @@ Customize via `ALLOWED_PATHS` (comma-separated).
 - Reading from /tmp/ and /var/folders/ is allowed
 - This enables handling of Telegram-downloaded files
 
-### Layer 5: Command Safety
+### Layer 4: Command Safety
 
 Dangerous shell commands are blocked as defense-in-depth.
 
@@ -135,7 +114,7 @@ rm -r /tmp/mydir         # Allowed - /tmp is always permitted
 
 Each path argument is checked against `ALLOWED_PATHS` before execution.
 
-### Layer 6: System Prompt
+### Layer 5: System Prompt
 
 Claude receives a safety prompt that instructs it to:
 
@@ -146,7 +125,7 @@ Claude receives a safety prompt that instructs it to:
 
 This is the primary protection layer. The other layers are defense-in-depth.
 
-### Layer 7: Audit Logging
+### Layer 6: Audit Logging
 
 All interactions are logged for security review.
 
@@ -156,7 +135,6 @@ Log location: /tmp/claude-telegram-audit.log (configurable)
 
 Logged events:
 - `message` - User messages and Claude responses
-- `blocked` - Blocked requests (with reason and confidence)
 - `auth` - Authorization attempts
 - `tool_use` - Claude tool usage
 - `error` - Errors during processing
