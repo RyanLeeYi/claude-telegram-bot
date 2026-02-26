@@ -9,6 +9,7 @@ import {
   query,
   type Options,
   type SDKMessage,
+  type ModelInfo,
 } from "@anthropic-ai/claude-agent-sdk";
 import { readFileSync } from "fs";
 import type { Context } from "grammy";
@@ -27,11 +28,41 @@ import { formatToolStatus } from "./formatting";
 import { checkPendingAskUserRequests } from "./handlers/streaming";
 import { checkCommandSafety, isPathAllowed } from "./security";
 import type {
+  AIProvider,
   SavedSession,
   SessionHistory,
   StatusCallback,
   TokenUsage,
 } from "./types";
+import { accountPool } from "./account-pool";
+
+/**
+ * Custom error class to distinguish rate limit errors from other errors.
+ */
+class RateLimitError extends Error {
+  readonly accountName: string;
+  constructor(accountName: string) {
+    super(`Rate limit reached for account "${accountName}"`);
+    this.name = "RateLimitError";
+    this.accountName = accountName;
+  }
+}
+
+/**
+ * Determine if an error is a rate limit error (SDK event or exception).
+ */
+function isRateLimitError(error: unknown): boolean {
+  if (error instanceof RateLimitError) return true;
+  const msg = String(error).toLowerCase();
+  return (
+    msg.includes("rate limit") ||
+    msg.includes("429") ||
+    msg.includes("too many") ||
+    msg.includes("overloaded") ||
+    msg.includes("usage limit") ||
+    msg.includes("capacity")
+  );
+}
 
 /**
  * Determine thinking token budget based on message keywords.
@@ -74,7 +105,9 @@ function getTextFromMessage(msg: SDKMessage): string | null {
 // Maximum number of sessions to keep in history
 const MAX_SESSIONS = 5;
 
-class ClaudeSession {
+const DEFAULT_MODEL = "claude-sonnet-4-5";
+
+class ClaudeSession implements AIProvider {
   sessionId: string | null = null;
   lastActivity: Date | null = null;
   queryStarted: Date | null = null;
@@ -85,6 +118,8 @@ class ClaudeSession {
   lastUsage: TokenUsage | null = null;
   lastMessage: string | null = null;
   conversationTitle: string | null = null;
+  currentModel: string = DEFAULT_MODEL;
+  private _modelCache: ModelInfo[] | null = null;
 
   private abortController: AbortController | null = null;
   private isQueryRunning = false;
@@ -166,6 +201,7 @@ class ClaudeSession {
    * Send a message to Claude with streaming updates via callback.
    *
    * @param ctx - grammY context for ask_user button display
+   * @param isRetry - true when called recursively after rate-limit rotation (prevents infinite loop)
    */
   async sendMessageStreaming(
     message: string,
@@ -173,7 +209,8 @@ class ClaudeSession {
     userId: number,
     statusCallback: StatusCallback,
     chatId?: number,
-    ctx?: Context
+    ctx?: Context,
+    isRetry = false
   ): Promise<string> {
     // Set chat context for ask_user MCP tool
     if (chatId) {
@@ -207,7 +244,7 @@ class ClaudeSession {
 
     // Build SDK V1 options - supports all features
     const options: Options = {
-      model: "claude-sonnet-4-5",
+      model: this.currentModel,
       cwd: WORKING_DIR,
       settingSources: ["user", "project"],
       permissionMode: "bypassPermissions",
@@ -217,6 +254,8 @@ class ClaudeSession {
       maxThinkingTokens: thinkingTokens,
       additionalDirectories: ALLOWED_PATHS,
       resume: this.sessionId || undefined,
+      // Inject CLAUDE_CONFIG_DIR from account pool (no-op if pool is empty)
+      env: { ...process.env, ...accountPool.getCurrentEnv() },
     };
 
     // Add Claude Code executable path if set (required for standalone builds)
@@ -287,6 +326,11 @@ class ClaudeSession {
 
         // Handle different message types
         if (event.type === "assistant") {
+          // Detect SDK-level rate limit signal
+          if ("error" in event && (event as { error?: string }).error === "rate_limit") {
+            throw new RateLimitError(accountPool.getCurrentName());
+          }
+
           for (const block of event.message.content) {
             // Thinking blocks
             if (block.type === "thinking") {
@@ -321,7 +365,8 @@ class ClaudeSession {
                   const isTmpRead =
                     toolName === "Read" &&
                     (TEMP_PATHS.some((p) => filePath.startsWith(p)) ||
-                      filePath.includes("/.claude/"));
+                      filePath.includes("/.claude/") ||
+                      filePath.includes("\\.claude\\"));
 
                   if (!isTmpRead && !isPathAllowed(filePath)) {
                     console.warn(
@@ -433,6 +478,38 @@ class ClaudeSession {
         (queryCompleted || askUserTriggered || this.stopRequested)
       ) {
         console.warn(`Suppressed post-completion error: ${error}`);
+      } else if (!isRetry && isRateLimitError(error)) {
+        // Rate limit: rotate to next account and retry once
+        const switched = accountPool.markLimitedAndRotate();
+        if (switched) {
+          this.sessionId = null; // Cross-account resume not possible
+          console.log(
+            `[AccountPool] Switching to "${accountPool.getCurrentName()}", retrying...`
+          );
+          // Notify via status callback so streaming state can relay to user
+          await statusCallback(
+            "tool",
+            `[!] Account limit reached — switching to ${accountPool.getCurrentName()}`
+          );
+          // Finally block will run before we recurse; re-run cleanup manually
+          this.isQueryRunning = false;
+          this.abortController = null;
+          this.queryStarted = null;
+          this.currentTool = null;
+          return this.sendMessageStreaming(
+            message,
+            username,
+            userId,
+            statusCallback,
+            chatId,
+            ctx,
+            true
+          );
+        }
+        // All accounts limited
+        this.lastError = "All accounts rate limited";
+        this.lastErrorTime = new Date();
+        throw new Error("All accounts rate limited. Please try again later.");
       } else {
         console.error(`Error in query: ${error}`);
         this.lastError = String(error).slice(0, 100);
@@ -464,6 +541,38 @@ class ClaudeSession {
     await statusCallback("done", "");
 
     return responseParts.join("") || "No response from Claude.";
+  }
+
+  /**
+   * Query supported models via V1 Query interface.
+   * Results are cached so subsequent calls are instant.
+   */
+  async getSupportedModels(): Promise<ModelInfo[]> {
+    if (this._modelCache) return this._modelCache;
+
+    const ac = new AbortController();
+    const q = query({
+      prompt: "",
+      options: {
+        model: DEFAULT_MODEL,
+        abortController: ac,
+        env: { ...process.env, ...accountPool.getCurrentEnv() } as Record<string, string>,
+      },
+    });
+    try {
+      const models = await q.supportedModels();
+      this._modelCache = models;
+      return models;
+    } finally {
+      ac.abort();
+    }
+  }
+
+  /**
+   * Get display name for a model value (uses cache).
+   */
+  getModelDisplayName(value: string): string {
+    return this._modelCache?.find((m) => m.value === value)?.displayName ?? value;
   }
 
   /**

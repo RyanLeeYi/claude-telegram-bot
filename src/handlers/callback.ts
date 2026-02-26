@@ -7,6 +7,7 @@
 import type { Context } from "grammy";
 import { unlinkSync } from "fs";
 import { session } from "../session";
+import type { AgentType } from "../agent-manager";
 import { ALLOWED_USERS } from "../config";
 import { isAuthorized } from "../security";
 import { auditLog, startTypingIndicator } from "../utils";
@@ -38,7 +39,19 @@ export async function handleCallback(ctx: Context): Promise<void> {
     return;
   }
 
-  // 3. Parse callback data: askuser:{request_id}:{option_index}
+  // 3. Handle model selection: model:{model_value}
+  if (callbackData.startsWith("model:")) {
+    await handleModelCallback(ctx, callbackData);
+    return;
+  }
+
+  // 4. Handle agent selection: agent:{agent_type}
+  if (callbackData.startsWith("agent:")) {
+    await handleAgentCallback(ctx, callbackData);
+    return;
+  }
+
+  // 5. Parse callback data: askuser:{request_id}:{option_index}
   if (!callbackData.startsWith("askuser:")) {
     await ctx.answerCallbackQuery();
     return;
@@ -153,6 +166,44 @@ export async function handleCallback(ctx: Context): Promise<void> {
 }
 
 /**
+ * Handle agent selection callback (agent:{agent_type}).
+ */
+async function handleAgentCallback(
+  ctx: Context,
+  callbackData: string
+): Promise<void> {
+  const userId = ctx.from?.id;
+  if (!userId) {
+    await ctx.answerCallbackQuery({ text: "User ID not found" });
+    return;
+  }
+
+  const agentType = callbackData.slice("agent:".length) as AgentType;
+
+  if (agentType !== "claude" && agentType !== "copilot") {
+    await ctx.answerCallbackQuery({ text: "Invalid agent type" });
+    return;
+  }
+
+  const { agentManager } = await import("../agent-manager");
+
+  agentManager.setAgent(agentType, userId);
+
+  const displayName = agentManager.getAgentDisplay(agentType);
+
+  try {
+    await ctx.editMessageText(
+      `✅ 已切換到 <b>${displayName}</b>`,
+      { parse_mode: "HTML" }
+    );
+  } catch {
+    // Ignore edit failures
+  }
+
+  await ctx.answerCallbackQuery({ text: `Switched to ${displayName}` });
+}
+
+/**
  * Handle resume session callback (resume:{session_id}).
  */
 async function handleResumeCallback(
@@ -214,4 +265,34 @@ async function handleResumeCallback(
   } finally {
     typing.stop();
   }
+}
+
+/**
+ * Handle model selection callback (model:{model_value}).
+ */
+async function handleModelCallback(
+  ctx: Context,
+  callbackData: string
+): Promise<void> {
+  const modelValue = callbackData.slice("model:".length);
+
+  if (!modelValue) {
+    await ctx.answerCallbackQuery({ text: "Invalid model" });
+    return;
+  }
+
+  session.currentModel = modelValue;
+  const displayName = session.getModelDisplayName(modelValue);
+
+  // Update the message to remove the keyboard
+  try {
+    await ctx.editMessageText(
+      `Model set to: <b>${displayName}</b>`,
+      { parse_mode: "HTML" }
+    );
+  } catch {
+    // Ignore edit failures
+  }
+
+  await ctx.answerCallbackQuery({ text: `Switched to ${displayName}` });
 }

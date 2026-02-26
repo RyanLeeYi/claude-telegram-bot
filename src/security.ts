@@ -77,10 +77,25 @@ export const rateLimiter = new RateLimiter();
 
 // ============== Path Validation ==============
 
+/**
+ * Convert Git Bash / MSYS2 paths (/c/Users/...) to Windows paths (C:\Users\...).
+ */
+function toWindowsPath(p: string): string {
+  if (process.platform !== "win32") return p;
+  const match = p.match(/^\/([a-zA-Z])\/(.*)/);
+  if (match) {
+    return `${match[1]!.toUpperCase()}:\\${match[2]!.replace(/\//g, "\\")}`;
+  }
+  return p;
+}
+
 export function isPathAllowed(path: string): boolean {
   try {
+    // Convert Git Bash paths to Windows format first
+    const winPath = toWindowsPath(path);
+
     // Expand ~ and resolve to absolute path
-    const expanded = path.replace(/^~/, process.env.HOME || "");
+    const expanded = winPath.replace(/^~/, process.env.HOME || "");
     const normalized = normalize(expanded);
 
     // Try to resolve symlinks (may fail if path doesn't exist yet)
@@ -103,7 +118,8 @@ export function isPathAllowed(path: string): boolean {
       const allowedResolved = resolve(allowed);
       if (
         resolved === allowedResolved ||
-        resolved.startsWith(allowedResolved + "/")
+        resolved.startsWith(allowedResolved + "/") ||
+        resolved.startsWith(allowedResolved + "\\")
       ) {
         return true;
       }

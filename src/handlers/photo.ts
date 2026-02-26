@@ -5,7 +5,7 @@
  */
 
 import type { Context } from "grammy";
-import { session } from "../session";
+import { agentManager } from "../agent-manager";
 import { ALLOWED_USERS, TEMP_DIR } from "../config";
 import { isAuthorized, rateLimiter } from "../security";
 import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
@@ -56,8 +56,10 @@ async function processPhotos(
   username: string,
   chatId: number
 ): Promise<void> {
+  const activeSession = agentManager.getSession(userId);
+
   // Mark processing started
-  const stopProcessing = session.startProcessing();
+  const stopProcessing = activeSession.startProcessing();
 
   // Build prompt
   let prompt: string;
@@ -73,11 +75,11 @@ async function processPhotos(
   }
 
   // Set conversation title (if new session)
-  if (!session.isActive) {
+  if (!activeSession.isActive) {
     const rawTitle = caption || "[Foto]";
     const title =
       rawTitle.length > 50 ? rawTitle.slice(0, 47) + "..." : rawTitle;
-    session.conversationTitle = title;
+    activeSession.conversationTitle = title;
   }
 
   // Start typing
@@ -88,7 +90,7 @@ async function processPhotos(
   const statusCallback = createStatusCallback(ctx, state);
 
   try {
-    const response = await session.sendMessageStreaming(
+    const response = await activeSession.sendMessageStreaming(
       prompt,
       username,
       userId,

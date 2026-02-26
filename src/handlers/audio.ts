@@ -7,7 +7,7 @@
 
 import type { Context } from "grammy";
 import { unlinkSync } from "fs";
-import { session } from "../session";
+import { agentManager } from "../agent-manager";
 import { ALLOWED_USERS, TEMP_DIR, TRANSCRIPTION_AVAILABLE } from "../config";
 import { isAuthorized, rateLimiter } from "../security";
 import {
@@ -62,7 +62,8 @@ export async function processAudioFile(
     return;
   }
 
-  const stopProcessing = session.startProcessing();
+  const activeSession = agentManager.getSession(userId);
+  const stopProcessing = activeSession.startProcessing();
   const typing = startTypingIndicator(ctx);
 
   try {
@@ -97,20 +98,20 @@ export async function processAudioFile(
       : transcript;
 
     // Set conversation title (if new session)
-    if (!session.isActive) {
+    if (!activeSession.isActive) {
       const title =
         transcript.length > 50
           ? transcript.slice(0, 47) + "..."
           : transcript;
-      session.conversationTitle = title;
+      activeSession.conversationTitle = title;
     }
 
     // Create streaming state and callback
     const state = new StreamingState();
     const statusCallback = createStatusCallback(ctx, state);
 
-    // Send to Claude
-    const claudeResponse = await session.sendMessageStreaming(
+    // Send to active agent
+    const claudeResponse = await activeSession.sendMessageStreaming(
       prompt,
       username,
       userId,
@@ -125,7 +126,7 @@ export async function processAudioFile(
     console.error("Error processing audio:", error);
 
     if (String(error).includes("abort") || String(error).includes("cancel")) {
-      const wasInterrupt = session.consumeInterruptFlag();
+      const wasInterrupt = activeSession.consumeInterruptFlag();
       if (!wasInterrupt) {
         await ctx.reply("🛑 Query stopped.");
       }

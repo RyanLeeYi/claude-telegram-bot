@@ -6,7 +6,7 @@
  */
 
 import type { Context } from "grammy";
-import { session } from "../session";
+import { agentManager } from "../agent-manager";
 import { ALLOWED_USERS, TEMP_DIR } from "../config";
 import { isAuthorized, rateLimiter } from "../security";
 import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
@@ -217,7 +217,8 @@ async function processArchive(
   username: string,
   chatId: number
 ): Promise<void> {
-  const stopProcessing = session.startProcessing();
+  const activeSession = agentManager.getSession(userId);
+  const stopProcessing = activeSession.startProcessing();
   const typing = startTypingIndicator(ctx);
 
   // Show extraction progress
@@ -252,18 +253,18 @@ async function processArchive(
       : `Please analyze this archive (${fileName}):\n\nFile tree (${tree.length} files):\n${treeStr}\n\nExtracted contents:\n${contentsStr}`;
 
     // Set conversation title (if new session)
-    if (!session.isActive) {
+    if (!activeSession.isActive) {
       const rawTitle = caption || `[Archivio: ${fileName}]`;
       const title =
         rawTitle.length > 50 ? rawTitle.slice(0, 47) + "..." : rawTitle;
-      session.conversationTitle = title;
+      activeSession.conversationTitle = title;
     }
 
     // Create streaming state
     const state = new StreamingState();
     const statusCallback = createStatusCallback(ctx, state);
 
-    const response = await session.sendMessageStreaming(
+    const response = await activeSession.sendMessageStreaming(
       prompt,
       username,
       userId,
@@ -317,8 +318,10 @@ async function processDocuments(
   username: string,
   chatId: number
 ): Promise<void> {
+  const activeSession = agentManager.getSession(userId);
+
   // Mark processing started
-  const stopProcessing = session.startProcessing();
+  const stopProcessing = activeSession.startProcessing();
 
   // Build prompt
   let prompt: string;
@@ -337,12 +340,12 @@ async function processDocuments(
   }
 
   // Set conversation title (if new session)
-  if (!session.isActive) {
+  if (!activeSession.isActive) {
     const docName = documents[0]?.name || "[Documento]";
     const rawTitle = caption || `[Documento: ${docName}]`;
     const title =
       rawTitle.length > 50 ? rawTitle.slice(0, 47) + "..." : rawTitle;
-    session.conversationTitle = title;
+    activeSession.conversationTitle = title;
   }
 
   // Start typing
@@ -353,7 +356,7 @@ async function processDocuments(
   const statusCallback = createStatusCallback(ctx, state);
 
   try {
-    const response = await session.sendMessageStreaming(
+    const response = await activeSession.sendMessageStreaming(
       prompt,
       username,
       userId,

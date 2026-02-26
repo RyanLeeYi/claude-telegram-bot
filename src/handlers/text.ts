@@ -3,7 +3,7 @@
  */
 
 import type { Context } from "grammy";
-import { session } from "../session";
+import { agentManager } from "../agent-manager";
 import { ALLOWED_USERS } from "../config";
 import { isAuthorized, rateLimiter } from "../security";
 import {
@@ -34,7 +34,7 @@ export async function handleText(ctx: Context): Promise<void> {
   }
 
   // 2. Check for interrupt prefix
-  message = await checkInterrupt(message);
+  message = await checkInterrupt(message, userId);
   if (!message.trim()) {
     return;
   }
@@ -50,18 +50,19 @@ export async function handleText(ctx: Context): Promise<void> {
   }
 
   // 4. Store message for retry
-  session.lastMessage = message;
+  const activeSession = agentManager.getSession(userId);
+  activeSession.lastMessage = message;
 
   // 5. Set conversation title from first message (if new session)
-  if (!session.isActive) {
+  if (!activeSession.isActive) {
     // Truncate title to ~50 chars
     const title =
       message.length > 50 ? message.slice(0, 47) + "..." : message;
-    session.conversationTitle = title;
+    activeSession.conversationTitle = title;
   }
 
   // 6. Mark processing started
-  const stopProcessing = session.startProcessing();
+  const stopProcessing = activeSession.startProcessing();
 
   // 7. Start typing indicator
   const typing = startTypingIndicator(ctx);
@@ -75,7 +76,7 @@ export async function handleText(ctx: Context): Promise<void> {
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      const response = await session.sendMessageStreaming(
+      const response = await activeSession.sendMessageStreaming(
         message,
         username,
         userId,
@@ -105,7 +106,7 @@ export async function handleText(ctx: Context): Promise<void> {
         console.log(
           `Claude Code crashed, retrying (attempt ${attempt + 2}/${MAX_RETRIES + 1})...`
         );
-        await session.kill(); // Clear corrupted session
+        await activeSession.kill(); // Clear corrupted session
         await ctx.reply(`⚠️ Claude crashed, retrying...`);
         // Reset state for retry
         state = new StreamingState();
@@ -119,10 +120,15 @@ export async function handleText(ctx: Context): Promise<void> {
       // Check if it was a cancellation
       if (errorStr.includes("abort") || errorStr.includes("cancel")) {
         // Only show "Query stopped" if it was an explicit stop, not an interrupt from a new message
-        const wasInterrupt = session.consumeInterruptFlag();
+        const wasInterrupt = activeSession.consumeInterruptFlag();
         if (!wasInterrupt) {
           await ctx.reply("🛑 Query stopped.");
         }
+      } else if (errorStr.includes("all accounts rate limited")) {
+        await ctx.reply(
+          "⏳ All accounts have reached their usage limit. Please try again later.\n" +
+          "Use /account to see cooldown status."
+        );
       } else {
         await ctx.reply(`❌ Error: ${errorStr.slice(0, 200)}`);
       }

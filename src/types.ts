@@ -80,3 +80,35 @@ export interface PendingMediaGroup {
 
 // Bot context with optional message
 export type BotContext = Context;
+
+/**
+ * Unified interface for AI provider sessions (Claude, Copilot, etc.)
+ * Both ClaudeSession and CopilotSessionManager implement this.
+ */
+export interface AIProvider {
+  sendMessageStreaming(
+    message: string,
+    username: string,
+    userId: number,
+    statusCallback: StatusCallback,
+    chatId?: number,
+    ctx?: Context
+  ): Promise<string>;
+
+  stop(): Promise<"stopped" | "pending" | false>;
+  kill(): Promise<void>;
+
+  startProcessing(): () => void;
+  clearStopRequested(): void;
+  consumeInterruptFlag(): boolean;
+  markInterrupt(): void;
+
+  readonly isActive: boolean;
+  readonly isRunning: boolean;
+  lastActivity: Date | null;
+  lastError: string | null;
+  lastUsage: TokenUsage | null;
+  currentModel: string;
+  lastMessage: string | null;
+  conversationTitle: string | null;
+}

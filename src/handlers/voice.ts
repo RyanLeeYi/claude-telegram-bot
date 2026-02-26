@@ -4,7 +4,7 @@
 
 import type { Context } from "grammy";
 import { unlinkSync } from "fs";
-import { session } from "../session";
+import { agentManager } from "../agent-manager";
 import { ALLOWED_USERS, TEMP_DIR, TRANSCRIPTION_AVAILABLE } from "../config";
 import { isAuthorized, rateLimiter } from "../security";
 import {
@@ -53,7 +53,8 @@ export async function handleVoice(ctx: Context): Promise<void> {
   }
 
   // 4. Mark processing started (allows /stop to work during transcription/classification)
-  const stopProcessing = session.startProcessing();
+  const activeSession = agentManager.getSession(userId);
+  const stopProcessing = activeSession.startProcessing();
 
   // 5. Start typing indicator for transcription
   const typing = startTypingIndicator(ctx);
@@ -100,18 +101,18 @@ export async function handleVoice(ctx: Context): Promise<void> {
     );
 
     // 9. Set conversation title from transcript (if new session)
-    if (!session.isActive) {
+    if (!activeSession.isActive) {
       const title =
         transcript.length > 50 ? transcript.slice(0, 47) + "..." : transcript;
-      session.conversationTitle = title;
+      activeSession.conversationTitle = title;
     }
 
     // 10. Create streaming state and callback
     const state = new StreamingState();
     const statusCallback = createStatusCallback(ctx, state);
 
-    // 11. Send to Claude
-    const claudeResponse = await session.sendMessageStreaming(
+    // 11. Send to active agent
+    const claudeResponse = await activeSession.sendMessageStreaming(
       transcript,
       username,
       userId,
@@ -127,7 +128,7 @@ export async function handleVoice(ctx: Context): Promise<void> {
 
     if (String(error).includes("abort") || String(error).includes("cancel")) {
       // Only show "Query stopped" if it was an explicit stop, not an interrupt from a new message
-      const wasInterrupt = session.consumeInterruptFlag();
+      const wasInterrupt = activeSession.consumeInterruptFlag();
       if (!wasInterrupt) {
         await ctx.reply("🛑 Query stopped.");
       }

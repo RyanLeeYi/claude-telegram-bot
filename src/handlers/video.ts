@@ -5,7 +5,7 @@
  */
 
 import type { Context } from "grammy";
-import { session } from "../session";
+import { agentManager } from "../agent-manager";
 import { ALLOWED_USERS, TEMP_DIR } from "../config";
 import { isAuthorized, rateLimiter } from "../security";
 import { auditLog, auditLogRateLimit, startTypingIndicator } from "../utils";
@@ -98,7 +98,8 @@ export async function handleVideo(ctx: Context): Promise<void> {
   }
 
   // 5. Process video
-  const stopProcessing = session.startProcessing();
+  const activeSession = agentManager.getSession(userId);
+  const stopProcessing = activeSession.startProcessing();
   const typing = startTypingIndicator(ctx);
 
   try {
@@ -115,18 +116,18 @@ export async function handleVideo(ctx: Context): Promise<void> {
       : `I've received a video file at path: ${videoPath}\n\nPlease transcribe it for me.`;
 
     // Set conversation title (if new session)
-    if (!session.isActive) {
+    if (!activeSession.isActive) {
       const rawTitle = caption || "[Video]";
       const title =
         rawTitle.length > 50 ? rawTitle.slice(0, 47) + "..." : rawTitle;
-      session.conversationTitle = title;
+      activeSession.conversationTitle = title;
     }
 
     // Create streaming state
     const state = new StreamingState();
     const statusCallback = createStatusCallback(ctx, state);
 
-    const response = await session.sendMessageStreaming(
+    const response = await activeSession.sendMessageStreaming(
       prompt,
       username,
       userId,
